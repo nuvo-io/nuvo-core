@@ -45,7 +45,8 @@ object SerializerCache {
 
 
     synchronizedWrite(mapRWLock) {
-      map += (classT.getName -> ((serializer, deserializer), (nakedKeySerializer, keyDeserializer)))
+      val serializers = ((serializer, deserializer), (nakedKeySerializer, keyDeserializer))
+      map += (classT.getName -> serializers)
     }
   }
   def registerType(name: String) {

@@ -1,13 +1,17 @@
 package nuvo.runtime
-
+/*
 import scala.reflect.runtime.universe._
 import reflect.runtime._
 import scala.reflect.runtime.{currentMirror => cm}
 import scala.tools.reflect.ToolBox
 import java.io.{FileInputStream, File}
 import io.BufferedSource
+*/
 
-
+case class Eval(file: String) {
+  def asObject[T](): T = ???
+}
+/*
 case class Eval(file: String) {
   def asObject[T](): T = {
     val toolbox = cm.mkToolBox()
@@ -23,3 +27,4 @@ case class Eval(file: String) {
     obj.asInstanceOf[T]
   }
 }
+*/

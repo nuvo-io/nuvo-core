@@ -3,7 +3,7 @@ package nuvo.net
 import java.nio.channels.SelectionKey
 import nuvo.nio.RawBuffer
 
-package object event {
+object event {
 
   /**
    * These are the events used to notify specific IO statuses.
