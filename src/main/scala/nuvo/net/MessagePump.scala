@@ -62,6 +62,9 @@ class TCPMessagePump(val locator: Locator, reader: (SelectionKey, RawBuffer) => 
             else if (k.isAcceptable) {
               val channel = acceptor.accept()
               channel.configureBlocking(false)
+              channel.socket().setTcpNoDelay(Networking.Socket.TCP_NO_DELAY)
+              channel.socket().setPerformancePreferences(Networking.Socket.Performance._1, Networking.Socket.Performance._2, Networking.Socket.Performance._3)
+
               val cid = counter.getAndIncrement()
               channel.register(rselector, SelectionKey.OP_READ, cid)
               connectionMap = connectionMap + (cid -> channel)
@@ -111,9 +114,9 @@ class TCPMessagePump(val locator: Locator, reader: (SelectionKey, RawBuffer) => 
           k.cancel()
         }
       } while (buf.position != buf.limit)
-    } getOrElse {
-      log.warning(s"Unknown channel ID: $cid")
-    }
+    } // getOrElse {
+//      log.warning(s"Unknown channel ID: $cid")
+//    }
   }
 
   def close(cid: Long) {

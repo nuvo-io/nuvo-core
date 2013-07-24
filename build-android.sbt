@@ -1,6 +1,6 @@
-name		:= "nuvo-core"
+name		:= "nuvo-core-android"
 
-version		:= "0.1.2"
+version		:= "0.1.2-SNAPSHOT"
 
 organization 	:= "io.nuvo"
 
@@ -17,6 +17,8 @@ githubRepo := "git@github.com:nuvo-io/mvn-repo.git"
 
 autoCompilerPlugins := true
 
+javacOptions ++= Seq("-source", "1.6", "-target", "1.6")
+
 scalacOptions += "-deprecation"
 
 scalacOptions += "-unchecked"
@@ -28,8 +30,6 @@ scalacOptions += "-feature"
 scalacOptions += "-language:postfixOps"
 
 scalacOptions += "-Xlint"
-
-//scalacOptions += "-Yinline-warnings"
 
 
 

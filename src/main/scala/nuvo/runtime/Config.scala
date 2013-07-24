@@ -21,6 +21,11 @@ object Config {
     val defaultBufferCacheSize = 32
 
     val defaultNIC = "en1"
+
+    object Socket {
+      val TCP_NO_DELAY = true
+      val Performance = (0, 2, 1)
+    }
   }
   // -- Logging
   type Logger = nuvo.util.log.ConsoleLogger
