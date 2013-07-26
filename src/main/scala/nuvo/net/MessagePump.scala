@@ -99,8 +99,10 @@ class TCPMessagePump(val locator: Locator, reader: (SelectionKey, RawBuffer) => 
     rdt.start()
   }
   def stop() {
+    connectionMap.foreach { e => close(e._1) }
     rdt.interrupt()
     rdt.join()
+
   }
 
   def writeTo(buf: RawBuffer, cid: Long) {

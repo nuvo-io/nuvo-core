@@ -17,7 +17,7 @@ class LFIOProcessor(executorNum: Int, bufSize: Int, msgBufLen: Int, processor: M
   private val payloads = new LinkedBlockingQueue[MessagePayload](msgBufLen)
   private val buffers = new LinkedBlockingDeque[RawBuffer](msgBufLen)
 
-  (1 to msgBufLen) map { x => buffers.putLast(RawBuffer.allocate(bufSize)) }
+  (1 to msgBufLen) map { x => buffers.putLast(RawBuffer.allocateDirect(bufSize)) }
 
   def process(message: MessagePayload) {
     val buf = buffers.takeLast()

@@ -24,7 +24,11 @@ object Config {
 
     object Socket {
       val TCP_NO_DELAY = true
-      val Performance = (0, 2, 1)
+      val Performance = (
+        0, // Connection time
+        2, // Latency
+        1 // Throughput
+      )
     }
   }
   // -- Logging
