@@ -2,11 +2,11 @@ package nuvo.nio
 
 import prelude._
 import java.io.{ObjectOutputStream, ObjectInputStream, InvalidObjectException}
-import collection.mutable.HashMap
 import java.lang.reflect.Method
 import nuvo.core.Tuple
 import nuvo.concurrent.synchronizers._
 import java.util.concurrent.locks.ReentrantReadWriteLock
+import nuvo.runtime.Config._
 
 
 object ByteOrder {
@@ -32,10 +32,15 @@ case object BigEndian extends ByteOrder {
 }
 
 object SerializerCache {
-  private var map = HashMap[String, ((Option[Method], Option[Method]), (Option[Method], Option[Method]))]()
   private val mapRWLock = new ReentrantReadWriteLock()
 
+  private var hashMap = Map[(Long, Long), ((Option[Method], Option[Method]), (Option[Method], Option[Method]))]()
+  private var map = Map[String, ((Option[Method], Option[Method]), (Option[Method], Option[Method]))]()
+
+
   def registerType[T](classT: Class[T], helperClass: Class[_]) {
+    val hashTypeMethod = helperClass.getMethods().find(_.getName == "typeHash")
+    val hashType = hashTypeMethod.map(_.invoke(null).asInstanceOf[(Long, Long)])
 
     val serializer = helperClass.getMethods().find(_.getName == "serializeNuvoSF")
     val deserializer = helperClass.getMethods().find(_.getName == "deserializeNoHeaderNuvoSF")
@@ -43,12 +48,15 @@ object SerializerCache {
     val nakedKeySerializer = helperClass.getMethods().find(_.getName == "serializeNakedKeyNuvoSF")
     val keyDeserializer = helperClass.getMethods().find(_.getName == "deserializeKeyNoHeaderNuvoSF")
 
-
     synchronizedWrite(mapRWLock) {
       val serializers = ((serializer, deserializer), (nakedKeySerializer, keyDeserializer))
-      map += (classT.getName -> serializers)
+      map = map +  (classT.getName -> serializers)
+      hashType map { h =>
+        hashMap = hashMap + (h -> serializers)
+      }
     }
   }
+
   def registerType(name: String) {
     val classT = Class.forName(name)
     val helperClass = Class.forName(name + "Helper")
@@ -57,6 +65,9 @@ object SerializerCache {
 
   @inline
   final def lookup(typeName: String) = synchronizedRead(mapRWLock) { map.get(typeName) }
+
+  @inline
+  final def lookup(typeHash: (Long, Long)) = synchronizedRead(mapRWLock) { hashMap.get(typeHash) }
 
 }
 
@@ -543,12 +554,12 @@ class RawBuffer(val buffer: java.nio.ByteBuffer) extends Ordered[RawBuffer] {
         }
       })
       val startPosition = buffer.position
-      val typeName = getString()
-
-      val (oserializer, kdeserializer) = SerializerCache.lookup(typeName).getOrElse (
+      // val typeName = getString()
+      val typeHash = (getLong(), getLong())
+      // log.debug(s"TypeHash = $typeHash")
+      val (oserializer, kdeserializer) = SerializerCache.lookup(typeHash).getOrElse (
       {
-        SerializerCache.registerType(typeName)
-        SerializerCache.lookup(typeName).get
+        throw new RuntimeException("Unable to deserialize type. Ensure all types are properly registered")
       })
 
       val result = oserializer._2.map(_.invoke(null, this).asInstanceOf[T]).get
