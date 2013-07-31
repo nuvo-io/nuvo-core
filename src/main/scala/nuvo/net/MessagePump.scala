@@ -63,6 +63,7 @@ class TCPMessagePump(val locator: Locator, reader: (SelectionKey, RawBuffer) => 
               val channel = acceptor.accept()
               channel.configureBlocking(false)
               channel.socket().setTcpNoDelay(Networking.Socket.TCP_NO_DELAY)
+              channel.socket().setSendBufferSize(Networking.Socket.SendBufSize)
               channel.socket().setPerformancePreferences(Networking.Socket.Performance._1, Networking.Socket.Performance._2, Networking.Socket.Performance._3)
 
               val cid = counter.getAndIncrement()

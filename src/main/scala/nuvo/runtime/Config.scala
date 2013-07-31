@@ -29,6 +29,7 @@ object Config {
         2, // Latency
         1 // Throughput
       )
+      val SendBufSize = 65536
     }
   }
   // -- Logging
