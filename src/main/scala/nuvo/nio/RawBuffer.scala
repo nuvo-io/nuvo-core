@@ -52,6 +52,7 @@ object SerializerCache {
       val serializers = ((serializer, deserializer), (nakedKeySerializer, keyDeserializer))
       map = map +  (classT.getName -> serializers)
       hashType map { h =>
+        println(s"Registering hashType: $h")
         hashMap = hashMap + (h -> serializers)
       }
     }
@@ -559,7 +560,7 @@ class RawBuffer(val buffer: java.nio.ByteBuffer) extends Ordered[RawBuffer] {
       // log.debug(s"TypeHash = $typeHash")
       val (oserializer, kdeserializer) = SerializerCache.lookup(typeHash).getOrElse (
       {
-        throw new RuntimeException("Unable to deserialize type. Ensure all types are properly registered")
+        throw new RuntimeException(s"Unable to deserialize type $typeHash. Ensure all types are properly registered")
       })
 
       val result = oserializer._2.map(_.invoke(null, this).asInstanceOf[T]).get

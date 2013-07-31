@@ -103,6 +103,8 @@ class TCPMessagePump(val locator: Locator, reader: (SelectionKey, RawBuffer) => 
     connectionMap.foreach { e => close(e._1) }
     rdt.interrupt()
     rdt.join()
+    rselector.close()
+    wselector.close()
 
   }
 
@@ -115,15 +117,15 @@ class TCPMessagePump(val locator: Locator, reader: (SelectionKey, RawBuffer) => 
         channel.write(buf)
         if (buf.position != buf.limit && k == None) {
           log.warning(s"Socket Buffer are full, you may need to increase size")
-          log.warning(s"buf = $buf")
-          System.out.flush()
           selector = Some(Selector.open())
           selector.map { s =>
             k = Some(channel.register(s, SelectionKey.OP_WRITE))
           }
         }
       } while (buf.position != buf.limit)
-      k.map{_.cancel()}
+      k map { _.cancel() }
+      selector map { _.close() }
+
     } // getOrElse {
     //      log.warning(s"Unknown channel ID: $cid")
     //    }
