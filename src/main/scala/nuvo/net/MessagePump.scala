@@ -108,15 +108,22 @@ class TCPMessagePump(val locator: Locator, reader: (SelectionKey, RawBuffer) => 
 
   def writeTo(buf: RawBuffer, cid: Long) {
     connectionMap.get(cid) map { channel =>
+      var k: Option[SelectionKey] = None
+      var selector: Option[Selector] = None
       do {
+        selector.map(_.select())
         channel.write(buf)
-        if (buf.position != buf.limit) {
+        if (buf.position != buf.limit && k == None) {
           log.warning(s"Socket Buffer are full, you may need to increase size")
-          val k = channel.register(wselector, SelectionKey.OP_WRITE)
-          wselector.select()
-          k.cancel()
+          log.warning(s"buf = $buf")
+          System.out.flush()
+          selector = Some(Selector.open())
+          selector.map { s =>
+            k = Some(channel.register(s, SelectionKey.OP_WRITE))
+          }
         }
       } while (buf.position != buf.limit)
+      k.map{_.cancel()}
     } // getOrElse {
     //      log.warning(s"Unknown channel ID: $cid")
     //    }
