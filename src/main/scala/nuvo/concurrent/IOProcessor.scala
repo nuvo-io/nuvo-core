@@ -1,29 +1,37 @@
 package nuvo.concurrent
 
-import nuvo.net.MessagePayload
+import nuvo.net.{MessagePumpMessage, DataAvailable}
 import nuvo.nio.RawBuffer
-import nuvo.net.MessagePayload
 import java.util.concurrent.{LinkedBlockingQueue, LinkedBlockingDeque, Semaphore}
 import nuvo.nio.prelude._
 import nuvo.runtime.Config._
 
 abstract class IOProcessor {
-  def process(message: MessagePayload)
+  def process(message: MessagePumpMessage): RawBuffer
   def start()
   def stop()
 }
 
-class LFIOProcessor(executorNum: Int, bufSize: Int, msgBufLen: Int, processor: MessagePayload => Any, handOverLevel: Int = 2) extends IOProcessor {
-  private val payloads = new LinkedBlockingQueue[MessagePayload](msgBufLen)
+class LFIOProcessor(executorNum: Int, bufSize: Int, msgBufLen: Int, processor: MessagePumpMessage => Any, handOverLevel: Int = 2) extends IOProcessor {
+  private val payloads = new LinkedBlockingQueue[MessagePumpMessage](msgBufLen)
   private val buffers = new LinkedBlockingDeque[RawBuffer](msgBufLen)
 
   (1 to msgBufLen) map { x => buffers.putLast(RawBuffer.allocateDirect(bufSize)) }
 
-  def process(message: MessagePayload) {
-    val buf = buffers.takeLast()
-    buf.put(message.buf)
-    buf.flip()
-    payloads.put(MessagePayload(buf, message.cid, message.mp))
+  def process(message: MessagePumpMessage): RawBuffer = {
+    message match {
+      case DataAvailable(mbuf, cid, mp) => {
+        val buf = buffers.takeLast()
+        // buf.put(mbuf)
+        // buf.flip()
+        payloads.put(DataAvailable(mbuf, cid, mp))
+        buf
+      }
+      case m @ _ => {
+        payloads.put(m)
+        null
+      }
+    }
   }
 
 
@@ -48,16 +56,24 @@ class LFIOProcessor(executorNum: Int, bufSize: Int, msgBufLen: Int, processor: M
             }
             try {
               processor(msg)
+              msg match {
+                case DataAvailable(buf, _, _) => {
+                  buf.clear()
+                  buffers.putLast(buf)
+                }
+                case _ =>
+              }
             } catch {
               case t: Throwable => {
                 log.error(s"Error while processing message: " + t.printStackTrace())
-                log.log("Closing connection: " + msg.cid)
-                msg.mp.close(msg.cid)
+                msg match {
+                  case DataAvailable(_, cid, mp) => {
+                    log.log("Closing connection: " + cid)
+                    mp.close(cid)
+                  }
+                }
               }
             }
-
-            msg.buf.clear()
-            buffers.putLast(msg.buf)
             if (leader == false)
               threadPool.putLast(this)
           }

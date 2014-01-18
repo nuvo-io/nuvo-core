@@ -31,47 +31,6 @@ case object BigEndian extends ByteOrder {
   val value: Byte = 0x31
 }
 
-object SerializerCache {
-  private val mapRWLock = new ReentrantReadWriteLock()
-
-  private var hashMap = Map[(Long, Long), ((Option[Method], Option[Method]), (Option[Method], Option[Method]))]()
-  private var map = Map[String, ((Option[Method], Option[Method]), (Option[Method], Option[Method]))]()
-
-
-  def registerType[T](classT: Class[T], helperClass: Class[_]) {
-    val hashTypeMethod = helperClass.getMethods().find(_.getName == "typeHash")
-    val hashType = hashTypeMethod.map(_.invoke(null).asInstanceOf[(Long, Long)])
-
-    val serializer = helperClass.getMethods().find(_.getName == "serializeNuvoSF")
-    val deserializer = helperClass.getMethods().find(_.getName == "deserializeNoHeaderNuvoSF")
-
-    val nakedKeySerializer = helperClass.getMethods().find(_.getName == "serializeNakedKeyNuvoSF")
-    val keyDeserializer = helperClass.getMethods().find(_.getName == "deserializeKeyNoHeaderNuvoSF")
-
-    synchronizedWrite(mapRWLock) {
-      val serializers = ((serializer, deserializer), (nakedKeySerializer, keyDeserializer))
-      map = map +  (classT.getName -> serializers)
-      hashType map { h =>
-        println(s"Registering hashType: $h")
-        hashMap = hashMap + (h -> serializers)
-      }
-    }
-  }
-
-  def registerType(name: String) {
-    val classT = Class.forName(name)
-    val helperClass = Class.forName(name + "Helper")
-    this.registerType(classT, helperClass)
-  }
-
-  @inline
-  final def lookup(typeName: String) = synchronizedRead(mapRWLock) { map.get(typeName) }
-
-  @inline
-  final def lookup(typeHash: (Long, Long)) = synchronizedRead(mapRWLock) { hashMap.get(typeHash) }
-
-}
-
 object RawBuffer {
   private val MIN_SIZE = 128
   def allocateDirect(size: Int)(implicit allocator: BufferAllocator) = {
@@ -502,14 +461,14 @@ class RawBuffer(val buffer: java.nio.ByteBuffer) extends Ordered[RawBuffer] {
     new String(buf)
   }
 
-  def putObject[T <: AnyRef](o: T, sf: SerializationFormat): RawBuffer = sf match {
+  def putObject[T <: AnyRef](o: T, sf: SerializationFormat)(implicit sr: SerializerRegistry): RawBuffer = sf match {
     case NuvoSF => {
       val typeName = o.getClass.getName
 
-      val (oserializers, kserializers) = SerializerCache.lookup(typeName).getOrElse (
+      val (oserializers, kserializers) = sr.lookup(typeName).getOrElse (
         {
-          SerializerCache.registerType(typeName)
-          SerializerCache.lookup(typeName).get
+          sr.registerType(typeName)
+          sr.lookup(typeName).get
         })
 
       oserializers._1.map(_.invoke(null, this, o))
@@ -529,11 +488,11 @@ class RawBuffer(val buffer: java.nio.ByteBuffer) extends Ordered[RawBuffer] {
     case _ => throw new UnsupportedOperationException(sf + " not supported yet")
   }
 
-  def putObject[T <: AnyRef](o: T): RawBuffer = putObject(o, NuvoSF)
+  def putObject[T <: AnyRef](o: T)(implicit sr: SerializerRegistry): RawBuffer = putObject(o, NuvoSF)(sr)
 
-  def getObject[T <: AnyRef](): T = getObject[T](NuvoSF)
+  def getObject[T <: AnyRef]()(implicit sr: SerializerRegistry): T = getObject[T](NuvoSF)(sr)
 
-  def getObject[T <: AnyRef](sf: SerializationFormat): T = sf match {
+  def getObject[T <: AnyRef](sf: SerializationFormat)(implicit sr: SerializerRegistry): T = sf match {
     case NuvoSF => {
       val currentOder = this.order
       this.order(LittleEndian)
@@ -558,7 +517,7 @@ class RawBuffer(val buffer: java.nio.ByteBuffer) extends Ordered[RawBuffer] {
       // val typeName = getString()
       val typeHash = (getLong(), getLong())
       // log.debug(s"TypeHash = $typeHash")
-      val (oserializer, kdeserializer) = SerializerCache.lookup(typeHash).getOrElse (
+      val (oserializer, kdeserializer) = sr.lookup(typeHash).getOrElse (
       {
         throw new RuntimeException(s"Unable to deserialize type $typeHash. Ensure all types are properly registered")
       })
@@ -589,13 +548,13 @@ class RawBuffer(val buffer: java.nio.ByteBuffer) extends Ordered[RawBuffer] {
    * @tparam T the tuple type
    */
 
-  def putKey[T <: Tuple : Manifest](k: Any) = {
+  def putKey[T <: Tuple : Manifest](k: Any)(implicit sr: SerializerRegistry) = {
     val typeName = manifest[T].runtimeClass.getName
 
-    val (oserializers, kserializers) = SerializerCache.lookup(typeName).getOrElse(
+    val (oserializers, kserializers) = sr.lookup(typeName).getOrElse(
     {
-      SerializerCache.registerType(typeName)
-      SerializerCache.lookup(typeName).get
+      sr.registerType(typeName)
+      sr.lookup(typeName).get
     })
 
     kserializers._1.map(_.invoke(null, this, k.asInstanceOf[AnyRef]))
@@ -608,7 +567,7 @@ class RawBuffer(val buffer: java.nio.ByteBuffer) extends Ordered[RawBuffer] {
    * @tparam K
    * @return the key for type T
    */
-  def getKey[K]() = {
+  def getKey[K]()(implicit sr: SerializerRegistry) = {
     val currentOder = this.order
     this.order(LittleEndian)
     val header = this.getInt()
@@ -626,10 +585,10 @@ class RawBuffer(val buffer: java.nio.ByteBuffer) extends Ordered[RawBuffer] {
     val startPosition = buffer.position
     val typeName = getString()
 
-    val (oserializers, kserializers) = SerializerCache.lookup(typeName).getOrElse (
+    val (oserializers, kserializers) = sr.lookup(typeName).getOrElse (
     {
-      SerializerCache.registerType(typeName)
-      SerializerCache.lookup(typeName).get
+      sr.registerType(typeName)
+      sr.lookup(typeName).get
     })
 
     val result = kserializers._2.map(_.invoke(null, this).asInstanceOf[K]).get
