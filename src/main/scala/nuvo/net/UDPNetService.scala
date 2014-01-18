@@ -43,9 +43,9 @@ class UDPNetService(l: Locator, e: (RawBuffer, NetService) => Unit)(implicit buf
 
       val channel = DatagramChannel.open(protoFamily)
       channel.setOption(StandardSocketOptions.SO_REUSEADDR, Boolean.box(true))
-      channel bind(new InetSocketAddress(locator.port))
+      channel bind new InetSocketAddress(locator.port)
       channel setOption(StandardSocketOptions.IP_MULTICAST_IF, ni);
-      val key = channel.join(addr, ni);
+      val key = channel.join(addr, ni)
       (channel, () => { key.drop()})
     }
     else {

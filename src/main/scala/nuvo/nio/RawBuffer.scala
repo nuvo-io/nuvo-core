@@ -7,6 +7,7 @@ import nuvo.core.Tuple
 import nuvo.concurrent.synchronizers._
 import java.util.concurrent.locks.ReentrantReadWriteLock
 import nuvo.runtime.Config._
+import scala.annotation.tailrec
 
 
 object ByteOrder {
@@ -360,14 +361,14 @@ class RawBuffer(val buffer: java.nio.ByteBuffer) extends Ordered[RawBuffer] {
     case LittleEndian => buffer.order(java.nio.ByteOrder.LITTLE_ENDIAN); this
   }
 
-   def getChar() = buffer.getChar
+  def getChar() = buffer.getChar
 
   def putChar(ch: Char): RawBuffer = {
     buffer.putChar(ch)
     this
   }
 
-   def getChar(index: Int): Char = buffer.getChar(index)
+  def getChar(index: Int): Char = buffer.getChar(index)
 
   def putChar(index: Int, ch: Char): RawBuffer = {
     buffer.putChar(index, ch)
@@ -390,7 +391,34 @@ class RawBuffer(val buffer: java.nio.ByteBuffer) extends Ordered[RawBuffer] {
   }
 
 
-  def getInt() = buffer.getInt
+  def getInt(): Int = buffer.getInt
+
+  def getVLInt(): Int = {
+    @tailrec
+    def parseVLInt(v: Int, mul: Int, base: Int): Int = {
+      val b = buffer.get()
+      val nf = 0x80 & b
+      val nv = v + (b & 0x7f) * mul
+      if (nf == 0) nv else parseVLInt(nv, mul*base, base)
+    }
+    parseVLInt(0, 1, 128)
+  }
+
+  def putVLInt(v: Int): Unit = {
+    @tailrec
+    def writeVLInt(n: Int, base: Int): Unit = {
+      val r = n % base
+      val n2 = (n - r) / base
+      if (n2 > 0) {
+        buffer.put((0x80 | r).toByte)
+        writeVLInt(n2, base)
+      }
+      else {
+        buffer.put(r.toByte)
+      }
+    }
+    writeVLInt(v, 128)
+  }
 
   def putInt(i: Int) = {
     buffer.putInt(i)
@@ -466,10 +494,10 @@ class RawBuffer(val buffer: java.nio.ByteBuffer) extends Ordered[RawBuffer] {
       val typeName = o.getClass.getName
 
       val (oserializers, kserializers) = sr.lookup(typeName).getOrElse (
-        {
-          sr.registerType(typeName)
-          sr.lookup(typeName).get
-        })
+      {
+        sr.registerType(typeName)
+        sr.lookup(typeName).get
+      })
 
       oserializers._1.map(_.invoke(null, this, o))
       this
@@ -508,7 +536,7 @@ class RawBuffer(val buffer: java.nio.ByteBuffer) extends Ordered[RawBuffer] {
             this.position(this.position + len)
           } catch {
             case iea: IllegalArgumentException => println(s">> Invalid length: $len")
-            throw iea
+              throw iea
           }
           throw new InvalidObjectException("The header is not valid")
         }

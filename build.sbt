@@ -6,14 +6,7 @@ organization 	:= "io.nuvo"
 
 homepage :=  Some(new java.net.URL("http://nuvo.io"))
 
-scalaVersion 	:= "2.10.2"
-
-seq(githubRepoSettings: _*)
-
-localRepo := Path.userHome / "github" / "repo"
-
-githubRepo := "git@github.com:nuvo-io/mvn-repo.git"
-
+scalaVersion 	:= "2.10.3"
 
 autoCompilerPlugins := true
 
