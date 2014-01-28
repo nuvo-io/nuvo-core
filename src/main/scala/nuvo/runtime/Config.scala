@@ -10,6 +10,7 @@ object Config {
   }
 
   object Networking {
+
     val baseDataPort = 9900
     val baseDiscoveryPort = 9901
     val domainGain = 10

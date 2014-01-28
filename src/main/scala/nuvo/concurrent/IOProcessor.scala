@@ -1,6 +1,6 @@
 package nuvo.concurrent
 
-import nuvo.net.{MessagePumpMessage, DataAvailable}
+import nuvo.net.{MessagePumpMessage, TCPDataAvailable}
 import nuvo.nio.RawBuffer
 import java.util.concurrent.{LinkedBlockingQueue, LinkedBlockingDeque, Semaphore}
 import nuvo.nio.prelude._
@@ -20,11 +20,9 @@ class LFIOProcessor(executorNum: Int, bufSize: Int, msgBufLen: Int, processor: M
 
   def process(message: MessagePumpMessage): RawBuffer = {
     message match {
-      case DataAvailable(mbuf, cid, mp) => {
+      case m @ TCPDataAvailable(mbuf, cid, mp) => {
         val buf = buffers.takeLast()
-        // buf.put(mbuf)
-        // buf.flip()
-        payloads.put(DataAvailable(mbuf, cid, mp))
+        payloads.put(m)
         buf
       }
       case m @ _ => {
@@ -57,7 +55,7 @@ class LFIOProcessor(executorNum: Int, bufSize: Int, msgBufLen: Int, processor: M
             try {
               processor(msg)
               msg match {
-                case DataAvailable(buf, _, _) => {
+                case TCPDataAvailable(buf, _, _) => {
                   buf.clear()
                   buffers.putLast(buf)
                 }
@@ -67,9 +65,9 @@ class LFIOProcessor(executorNum: Int, bufSize: Int, msgBufLen: Int, processor: M
               case t: Throwable => {
                 log.error(s"Error while processing message: " + t.printStackTrace())
                 msg match {
-                  case DataAvailable(_, cid, mp) => {
-                    log.log("Closing connection: " + cid)
-                    mp.close(cid)
+                  case TCPDataAvailable(_, remoteAddress, mp) => {
+                    log.log("Closing connection: " + remoteAddress)
+                    mp.close(remoteAddress)
                   }
                 }
               }

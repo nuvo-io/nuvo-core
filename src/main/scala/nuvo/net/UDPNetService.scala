@@ -12,6 +12,7 @@ import nuvo.nio.{BufferAllocator, RawBuffer, ByteOrder}
 
 
 class UDPNetService(l: Locator, e: (RawBuffer, NetService) => Unit)(implicit bufAllocator: BufferAllocator) extends NetService(l) {
+
   require {
     l.transport == "udp"
   }
@@ -46,7 +47,10 @@ class UDPNetService(l: Locator, e: (RawBuffer, NetService) => Unit)(implicit buf
       channel bind new InetSocketAddress(locator.port)
       channel setOption(StandardSocketOptions.IP_MULTICAST_IF, ni);
       val key = channel.join(addr, ni)
-      (channel, () => { key.drop()})
+      (channel, () => {
+        key.drop()
+        channel.close()
+      })
     }
     else {
       val sockAddr =

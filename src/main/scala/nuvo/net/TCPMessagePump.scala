@@ -1,7 +1,7 @@
 package nuvo.net
 
 import java.io.IOException
-import java.net.{InetAddress, InetSocketAddress}
+import java.net.{SocketAddress, InetAddress, InetSocketAddress}
 import java.nio.channels.{ServerSocketChannel, Selector, SocketChannel, SelectionKey}
 import java.util.concurrent.atomic.{AtomicReference, AtomicLong}
 import nuvo.nio.RawBuffer
@@ -13,14 +13,18 @@ import nuvo.concurrent.synchronizers._
 /**
  * This class uses a thread to read messages from connected channels and one to write into connected channels.
  *
- * @param locator the locator at which this message pump will be instantiated
+ * @param endpoint the endpoint at which this message pump will be instantiated
  * @param reader reads the data out of the channel
  * @param bufSize the size of the buffer used by this message pump.
  * @param consumer  consumes a message from the pump and gives back the buffer to be used for the next I/O operation.
  */
-class TCPMessagePump(val locator: Locator, reader: (SelectionKey, RawBuffer) => RawBuffer, bufSize: Int, consumer: MessagePumpMessage => RawBuffer) extends MessagePump {
-  private val connectionMapRef = new AtomicReference(Map[Long, SocketChannel]())
-  // @volatile private var connectionMap = Map[Long, SocketChannel]()
+class TCPMessagePump(val endpoint: Endpoint,
+                     reader: (SelectionKey, RawBuffer) => RawBuffer, bufSize: Int,
+                     consumer: MessagePumpMessage => RawBuffer) extends MessagePump {
+  require {
+    endpoint.proto == Protocol.tcp
+  }
+  private val connectionMapRef = new AtomicReference(Map[SocketAddress, SocketChannel]())
   val rselector = Selector.open()
   val wselector = Selector.open()
   private val counter = new AtomicLong(0)
@@ -29,8 +33,7 @@ class TCPMessagePump(val locator: Locator, reader: (SelectionKey, RawBuffer) => 
     def run() {
       var buf = RawBuffer.allocateDirect(bufSize)
 
-      val addr =
-        new InetSocketAddress(InetAddress.getByName(locator.address), locator.port)
+      val addr = endpoint.socketAddress
 
       val acceptor= ServerSocketChannel.open()
       acceptor.bind(addr)
@@ -51,37 +54,41 @@ class TCPMessagePump(val locator: Locator, reader: (SelectionKey, RawBuffer) => 
             iterator.remove()
 
             if (k.isReadable) {
-              val cid = k.attachment().asInstanceOf[Long]
-              buf = consumer(DataAvailable(reader(k, buf), cid, TCPMessagePump.this))
+              val remoteAddress = k.attachment().asInstanceOf[SocketAddress]
+              buf = consumer(TCPDataAvailable(reader(k, buf), remoteAddress, TCPMessagePump.this))
             }
             else if (k.isAcceptable) {
               val channel = acceptor.accept()
               channel.configureBlocking(false)
               channel.socket().setTcpNoDelay(Networking.Socket.TCP_NO_DELAY)
               channel.socket().setSendBufferSize(Networking.Socket.SendBufSize)
-              channel.socket().setPerformancePreferences(Networking.Socket.Performance._1, Networking.Socket.Performance._2, Networking.Socket.Performance._3)
+              channel.socket().setPerformancePreferences(
+                Networking.Socket.Performance._1,
+                Networking.Socket.Performance._2,
+                Networking.Socket.Performance._3)
 
-              val cid = counter.getAndIncrement()
-              channel.register(rselector, SelectionKey.OP_READ, cid)
+              val remoteAddress = channel.getRemoteAddress()
+              channel.register(rselector, SelectionKey.OP_READ, remoteAddress)
 
-              compareAndSet(connectionMapRef) { connectionMap => connectionMap + (cid -> channel) }
+              compareAndSet(connectionMapRef) { connectionMap => connectionMap + (remoteAddress -> channel) }
 
-              log.debug("> Accepted Connection from: " + channel.getRemoteAddress() + s" [$cid]")
+              log.debug("> Accepted Connection from: " + channel.getRemoteAddress())
             }
           }
         } catch {
           case ie: InterruptedException => {
             interrupted = true
+            acceptor.close()
             consumer(ServiceStopped)
           }
           case ioe: IOException => {
             if (k != null) {
-              val cid = k.attachment().asInstanceOf[Long]
+              val remoteAddress = k.attachment().asInstanceOf[SocketAddress]
               k.cancel()
               k.channel().close()
-              compareAndSet(connectionMapRef) { connectionMap => connectionMap - cid }
-              consumer(ConnectionClosed(cid))
-              log.warning(s"Closing connection: $cid")
+              compareAndSet(connectionMapRef) { connectionMap => connectionMap - remoteAddress }
+              consumer(TCPConnectionClosed(remoteAddress))
+              log.warning(s"Closing connection to: $remoteAddress ")
               log.warning(s"Due to error:\n\t$ioe")
             }
             else {
@@ -108,8 +115,8 @@ class TCPMessagePump(val locator: Locator, reader: (SelectionKey, RawBuffer) => 
 
   }
 
-  def writeTo(buf: RawBuffer, cid: Long) {
-    connectionMapRef.get().get(cid) map { channel =>
+  def writeTo(buf: RawBuffer, remoteAddress: SocketAddress) {
+    connectionMapRef.get().get(remoteAddress) map { channel =>
       var k: Option[SelectionKey] = None
       var selector: Option[Selector] = None
       do {
@@ -127,18 +134,21 @@ class TCPMessagePump(val locator: Locator, reader: (SelectionKey, RawBuffer) => 
       selector map { _.close() }
 
     } getOrElse {
-      log.warning(s"Unknown channel ID: $cid")
+      log.warning(s"The remote address $remoteAddress does not match any connection")
     }
   }
 
-  def close(cid: Long) {
-    connectionMapRef.get().get(cid) map { channel =>
+  def close(remoteAddress: SocketAddress) {
+    connectionMapRef.get().get(remoteAddress) map { channel =>
       val k = channel.keyFor(rselector)
       k.cancel()
       channel.close()
     } getOrElse {
-      log.warning(s"Unknown channel ID: $cid")
+      log.warning(s"The remote address $remoteAddress does not match any connection")
     }
   }
 
+  def resolveEndpoint(remoteAddress: SocketAddress): Option[SocketAddress] = {
+    connectionMapRef.get().get(remoteAddress) map { _.getRemoteAddress}
+  }
 }

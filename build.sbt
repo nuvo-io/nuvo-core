@@ -1,10 +1,12 @@
 name		:= "nuvo-core"
 
-version		:= "0.1.2"
+version		:= "0.2.0-SNAPSHOT"
 
 organization 	:= "io.nuvo"
 
 homepage :=  Some(new java.net.URL("http://nuvo.io"))
+
+publishTo := Some(Resolver.file("file",  new File( "/Users/nuvo/Labs/mvn-repo/snapshots" )) )
 
 scalaVersion 	:= "2.10.3"
 
