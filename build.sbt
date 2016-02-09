@@ -1,14 +1,14 @@
 name		:= "nuvo-core"
 
-version		:= "0.2.1-SNAPSHOT"
+version		:= "0.3.0-SNAPSHOT"
 
 organization 	:= "io.nuvo"
 
 homepage :=  Some(new java.net.URL("http://nuvo.io"))
 
-publishTo := Some(Resolver.file("file",  new File( "/Users/nuvo/Labs/mvn-repo/snapshots" )) )
+publishTo := Some(Resolver.file("file",  new File( "/Users/veda/hacking/zlab/mvn-repo/snapshots" )) )
 
-scalaVersion 	:= "2.10.3"
+scalaVersion 	:= "2.11.7"
 
 autoCompilerPlugins := true
 
